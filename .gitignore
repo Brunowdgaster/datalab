@@ -1,0 +1,6 @@
+fortran/modelo
+fortran/*.o
+fortran/*.mod
+*.sqlite
+__pycache__/
+*.py[cod]

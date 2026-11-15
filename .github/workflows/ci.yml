@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  modelo:
+    name: modelo (Python, R, Octave, Fortran, hansl, SQL)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: toolchains numericos
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            python3-numpy r-base-core octave gfortran gretl sqlite3
+          # Falha ALTO se algum nao instalou. Sem isto a suite PULARIA a
+          # implementacao e passaria verde tendo comparado menos.
+          python3 -c 'import numpy; print("numpy", numpy.__version__)'
+          Rscript --version
+          octave --version | head -1
+          gfortran -dumpversion
+          gretlcli --version </dev/null | head -1
+          sqlite3 --version
+
+      - name: a suite, em modo exigente
+        # P05_EXIGE=1 transforma "pulado" em FALHA: no CI, uma implementacao
+        # ausente significa que a comparacao cobriu menos do que diz.
+        env:
+          P05_EXIGE: '1'
+        run: ./verifica.sh
+
+      - name: a tabela de divergencia, no log
+        # Nao e teste: e o RESULTADO do projeto. Deixa-lo no log de cada
+        # execucao e o que permite ver se a divergencia mudou com uma versao
+        # nova de BLAS ou de compilador -- que e informacao, nao ruido.
+        run: python3 compara.py

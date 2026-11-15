@@ -1,0 +1,90 @@
+# modelo.inp — o mesmo OLS, em hansl (a linguagem do gretl).
+#
+#     ./hansl/roda.sh bem
+#
+# ## Por que hansl, e a ressalva que vem com ele
+#
+# O plano original deste portfolio pedia **Stata**. O Stata nao tem edicao
+# gratuita, nao tem versao de comunidade e nao tem trial aberto -- e a regra
+# declarada do portfolio e *nenhum recurso pago*.
+#
+# O `hansl` e a linguagem do **gretl** (GNU Regression, Econometrics and
+# Time-series Library), livre sob GPL e empacotada no apt. Ele cobre o
+# TERRENO do Stata: analise econometrica dirigida por comando, centrada num
+# conjunto de dados que esta sempre "aberto", com comandos que operam sobre
+# ele implicitamente.
+#
+# Compare com as outras implementacoes deste projeto:
+#
+#     Python   X = np.column_stack([ones, x1, x2]); lstsq(X, y)
+#     Fortran  monta a matriz, decompoe por Householder, resolve
+#     Octave   b = X \ y
+#     hansl    ols y const x1 x2
+#
+# Nao ha matriz, nao ha vetor, nao ha variavel de resultado. O comando `ols`
+# diz o que estimar, e o conjunto de dados aberto fornece o resto. E
+# exatamente o modelo mental do Stata -- e e por isso que ele substitui bem.
+#
+# **E NAO E STATA.** A sintaxe e diferente (`ols y const x1 x2` contra
+# `regress y x1 x2`), o acessor de resultado e diferente (`$coeff` contra
+# `_b[]`), e um arquivo .do nao roda aqui. Este arquivo esta rotulado como
+# hansl pelo mesmo motivo que a macro do p12-toolbelt esta rotulada como
+# LibreOffice Basic e nao como VBA.
+#
+# ## O `const` explicito
+#
+# Em hansl o intercepto e uma SERIE chamada `const`, que o gretl cria sozinho
+# em todo conjunto de dados. Escreve-la na lista de regressores e explicito de
+# proposito: nas outras quatro implementacoes a coluna de 1s tambem e montada
+# a mao, e o projeto quer que o MODELO seja visivelmente o mesmo.
+#
+# ## Duas coisas que o gretlcli faz diferente de todo o resto
+#
+# **Ele tem diretorio de trabalho PROPRIO.** Um `open dados/bem.csv` nao
+# resolve contra o diretorio de onde o comando foi invocado: resolve contra o
+# `workdir` do gretl, que por padrao e outro. O sintoma e cruel -- o `open`
+# falha, o `ols` seguinte nao tem dados, e o erro que aparece e sobre a
+# estimacao, nao sobre o arquivo.
+#
+# Por isso o caminho vem absoluto, por variavel de ambiente, com a
+# substituicao `@base` do proprio hansl.
+#
+# **E ele nao recebe argumento de linha de comando.** O `gretlcli -b script`
+# nao tem como passar parametro, entao o caso tambem vem do ambiente -- e o
+# `roda.sh` ao lado existe para isso.
+
+set verbose off
+
+string base = getenv("P05_BASE")
+string caso = getenv("P05_CASO")
+
+# Falha ALTO se o ambiente nao veio.
+#
+# Sem isto, `open "/dados/.csv"` falharia com mensagem sobre arquivo
+# inexistente -- e quem estivesse depurando procuraria o arquivo em vez da
+# variavel.
+if strlen(base) == 0 || strlen(caso) == 0
+    printf "P05_BASE e P05_CASO precisam estar no ambiente\n"
+    quit
+endif
+
+open "@base/dados/@caso.csv" --quiet
+
+# A estimacao. Uma linha.
+#
+# `--quiet` suprime a tabela formatada; o que este projeto compara e a saida
+# posicional abaixo, nao o relatorio bonito.
+ols y const x1 x2 --quiet
+
+# Os 15 digitos de TOLERANCIA.md.
+#
+# `$coeff` e um VETOR com os coeficientes na ordem dos regressores, e
+# `$coeff[1]` e o do `const`. Os acessores com `$` sao resultados da ULTIMA
+# estimacao -- o mesmo modelo de "resultado implicito" do Stata, e o que
+# nenhuma das outras quatro linguagens tem.
+printf "b0=%.14e\n", $coeff[1]
+printf "b1=%.14e\n", $coeff[2]
+printf "b2=%.14e\n", $coeff[3]
+printf "r2=%.14e\n", $rsq
+printf "sigma=%.14e\n", $sigma
+printf "gl=%d\n", $df
