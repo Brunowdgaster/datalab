@@ -216,6 +216,23 @@ Note o terceiro: a suíte **exige que algumas implementações divirjam**. Se um
 delas passasse a concordar no caso mal-condicionado, a tese do projeto estaria
 errada — e esse teste é que avisaria.
 
+### E o projeto ensinou a própria lição ao seu autor
+
+O teste *"a referência gravada está em dia?"* comparava o JSON do instantâneo
+com o recalculado **como texto**. Passou aqui e **falhou no CI**.
+
+A causa é exatamente o assunto do projeto: o LAPACK do runner do GitHub não é
+o mesmo build do desta máquina, e a SVD devolve bits diferentes nos últimos
+dígitos. O arquivo gravado é um instantâneo de ponto flutuante, e exigir
+igualdade textual dele é o mesmo erro que exigir `diff` entre as
+implementações.
+
+A disciplina de tolerância valia para as sete implementações e não para o
+instantâneo — que é produzido pela mesma aritmética. Hoje ele também é
+comparado com `1e-10`, e o teste distingue as duas causas possíveis: acima da
+tolerância, os dados ou o modelo mudaram; abaixo, é a mesma diferença de BLAS
+que o projeto existe para medir.
+
 ## Roadmap
 
 | linguagem | o que mostra | situação |

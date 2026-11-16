@@ -251,11 +251,65 @@ fi
 # ---------------------------------------------------------------------------
 secao 'a referência gravada está em dia?'
 
-atual=$(python3 python/referencia.py bem --json 2>/dev/null)
-if [ "$atual" = "$(cat dados/esperado/bem.json)" ]; then
-    passa 'dados/esperado/bem.json confere com o recalculado'
+# ESTE TESTE TAMBEM COMPARA COM TOLERANCIA, e a primeira versao nao comparava.
+#
+# Ela usava `[ "$atual" = "$(cat dados/esperado/bem.json)" ]` -- comparacao de
+# TEXTO -- e passou localmente e FALHOU no CI.
+#
+# A causa e exatamente o assunto deste projeto: o LAPACK do runner do GitHub
+# nao e o mesmo build do LAPACK desta maquina, e a SVD devolve bits diferentes
+# nos ultimos digitos. O arquivo gravado e um instantaneo de ponto flutuante,
+# e exigir igualdade textual dele e o mesmo erro que exigir `diff` entre as
+# implementacoes.
+#
+# Foi o projeto ensinando a propria licao ao seu autor: a disciplina de
+# tolerancia valia para as sete implementacoes e nao para o instantaneo, que e
+# produzido pela mesma aritmetica.
+#
+# O que o teste confere agora: que o gravado esta dentro de 1e-10 do
+# recalculado -- a mesma tolerancia do caso bem-condicionado, pelo mesmo
+# motivo. Divergencia ACIMA disso significa que os dados ou o modelo mudaram e
+# o instantaneo ficou velho; abaixo, e a mesma diferenca de BLAS que o projeto
+# existe para medir.
+if python3 - <<'PY'
+import json
+import subprocess
+import sys
+
+TOL = 1e-10
+
+atual = json.loads(subprocess.run(
+    ["python3", "python/referencia.py", "bem", "--json"],
+    capture_output=True, text=True, check=True).stdout)
+gravado = json.load(open("dados/esperado/bem.json"))
+
+piores = []
+for campo in ("r2", "sigma", "condicao"):
+    a, g = atual[campo], gravado[campo]
+    piores.append((abs(a - g) / max(abs(g), 1e-300), campo))
+for i, (a, g) in enumerate(zip(atual["beta"], gravado["beta"])):
+    piores.append((abs(a - g) / max(abs(g), 1e-300), f"beta[{i}]"))
+
+piores.sort(reverse=True)
+pior, qual = piores[0]
+
+if atual["gl"] != gravado["gl"] or atual["rank"] != gravado["rank"]:
+    print(f"        gl ou rank mudaram: o modelo nao e mais o mesmo",
+          file=sys.stderr)
+    sys.exit(1)
+
+if pior <= TOL:
+    print(f"        pior |delta|rel = {pior:.1e} em {qual}, dentro de {TOL:.0e}")
+    sys.exit(0)
+
+print(f"        pior |delta|rel = {pior:.1e} em {qual}, ACIMA de {TOL:.0e}",
+      file=sys.stderr)
+sys.exit(1)
+PY
+then
+    passa 'dados/esperado/bem.json confere com o recalculado (com tolerância)'
 else
-    falha 'o esperado gravado divergiu: rode referencia.py --gravar'
+    falha 'o esperado gravado divergiu acima da tolerância: rode --gravar'
 fi
 
 printf '\n%s\n' '=============================================================='
