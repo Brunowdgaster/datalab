@@ -144,14 +144,19 @@ else
     #        `k*eps` e 1,7e-06, entao 1e-6 e o proprio limite do problema.
     #
     #   mal, familia equacoes normais: tem de DIVERGIR acima de 1e-4. Medido:
-    #        3,4e-03 (Gauss) e 4,0e-01 (Cramer). Isto nao e tolerancia: e
-    #        asserção da previsão.
+    #        3,4e-03 (Gauss), 2,4e-02 (Cholesky do Julia) e 4,0e-01 (Cramer).
+    #        Isto nao e tolerancia: e asserção da previsão.
+    #
+    #        E a ORDEM entre as tres e informativa: a mesma familia de
+    #        algoritmo, com tres fatoracoes diferentes, erra por uma ordem de
+    #        grandeza de diferenca entre si. Nao e so "equacoes normais sao
+    #        ruins": QUAL fatoracao se usa depois tambem importa.
     python3 - "$MEDIDO" <<'PY'
 import json
 import sys
 
-QR_SVD = {"python", "R", "octave", "fortran-qr", "hansl"}
-NORMAIS = {"fortran-nrm", "sql"}
+QR_SVD = {"python", "R", "octave", "fortran-qr", "hansl", "julia-qr"}
+NORMAIS = {"fortran-nrm", "sql", "julia-nrm"}
 
 TOL_BEM = 1e-10
 TOL_MAL_QR = 1e-6
@@ -170,6 +175,38 @@ def bad(msg):
     print(f"  \033[31mFALHA\033[0m {msg}")
     falhou += 1
 
+
+# --- os dois conjuntos cobrem TODAS as implementacoes? --------------------
+#
+# Esta verificacao existe porque sem ela ha um buraco silencioso: no caso
+# `mal`, as checagens iteram sobre QR_SVD e NORMAIS. Uma implementacao que nao
+# esteja em nenhum dos dois NAO E VERIFICADA ALI -- e a suite passa verde,
+# porque nada reclama de um conjunto incompleto.
+#
+# Foi exatamente o risco ao acrescentar o Julia: registra-lo no `compara.py` e
+# esquecer aqui daria dois numeros bonitos na tabela e zero verificacao sobre
+# eles.
+#
+# E a mesma falha que este portfolio registrou onze vezes com outro nome -- o
+# instrumento que esconde o proprio sinal. A diferenca e que aqui ela esta
+# fechada por construcao: implementacao nova sem familia declarada REPROVA a
+# suite, em vez de ser ignorada.
+todas = {l["impl"] for caso in dados.values() for l in caso["linhas"]}
+classificadas = QR_SVD | NORMAIS
+sem_familia = todas - classificadas
+sobrando = classificadas - todas
+
+if sem_familia:
+    bad(f"implementações sem família declarada: {', '.join(sorted(sem_familia))}"
+        f" -- elas NÃO seriam verificadas no caso mal")
+elif sobrando:
+    # Nao e falha: uma implementacao pode estar declarada e ter sido pulada
+    # por falta de ferramenta. Mas o aviso evita que um nome errado numa das
+    # listas passe por verificacao que nao acontece.
+    print(f"  [90maviso[0m   declaradas mas ausentes da medição: "
+          f"{', '.join(sorted(sobrando))}")
+else:
+    ok(f"as {len(todas)} implementações estão todas classificadas por família")
 
 # --- caso bem: todas concordam ---------------------------------------------
 bem = dados["bem"]["linhas"]

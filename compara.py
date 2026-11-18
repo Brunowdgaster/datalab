@@ -33,7 +33,9 @@ IMPLS = [
     ("octave",      "QR (operador \\)",         ["octave", "--no-gui", "--quiet", "octave/modelo.m", "{caso}"]),
     ("fortran-qr",  "QR Householder, à mão",   ["./fortran/modelo", "{caso}", "qr"]),
     ("hansl",       "gretl (ver abaixo)",      ["bash", "hansl/roda.sh", "{caso}"]),
+    ("julia-qr",    "QR pivotada (LAPACK dgeqp3)", ["bash", "julia/roda.sh", "{caso}"]),
     ("fortran-nrm", "equações normais + Gauss", ["./fortran/modelo", "{caso}", "normal"]),
+    ("julia-nrm",   "equações normais + Cholesky", ["bash", "julia/roda.sh", "{caso}", "normal"]),
     ("sql",         "equações normais + Cramer", ["bash", "sql/roda.sh", "{caso}"]),
 ]
 

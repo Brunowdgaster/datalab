@@ -5,7 +5,7 @@ Octave, Fortran, hansl e SQL** — sete implementações, porque o Fortran traz
 duas — sobre o mesmo conjunto de dados, comparadas com **tolerância
 justificada** em vez de `diff`.
 
-> **Status:** 6 das 10 linguagens previstas, com **11 verificações**. Python,
+> **Status:** 7 das 10 linguagens previstas, com **11 verificações**. Python,
 > R, Octave (dialeto MATLAB), Fortran, hansl e SQL estão completos. Ver
 > [Roadmap](#roadmap).
 
@@ -101,6 +101,80 @@ flutuante — é o erro clássico da rotina.
 da perda seria da eliminação e não do `XᵗX`, e a comparação seria injusta.
 Com ele, a eliminação está tão boa quanto dá, e o erro que sobra é atribuível
 ao algoritmo que o projeto acusa.
+
+## O Julia mostrou que "equações normais" não é uma categoria
+
+A tese deste projeto é que **o algoritmo é a variável, não a linguagem**. O
+Julia entrou com as duas famílias — o operador `\`, que despacha para QR com
+pivotamento de colunas, e as equações normais com Cholesky, montadas à mão —
+e o resultado refinou a tese.
+
+No caso mal-condicionado (número de condição 7,4e+09), o erro relativo nos
+coeficientes:
+
+| implementação | fatoração | pior Δ relativo |
+|---|---|---|
+| octave | QR (operador `\`) | **1,8e-13** |
+| hansl (gretl) | QR | 9,6e-11 |
+| julia-qr | QR pivotada (`dgeqp3`) | 1,3e-08 |
+| R | QR (LINPACK `dqrdc2`) | 1,4e-08 |
+| fortran-qr | QR Householder, à mão | 1,4e-08 |
+| | | |
+| fortran-nrm | equações normais + **Gauss** | 3,4e-03 |
+| julia-nrm | equações normais + **Cholesky** | 2,4e-02 |
+| sql | equações normais + **Cramer** | 4,0e-01 |
+
+A linha horizontal é a fronteira entre as famílias, e ela **separa cinco ordens
+de grandeza** — que é o ponto que o projeto já fazia.
+
+O que o Julia acrescentou é a leitura da metade de baixo: **as três
+implementações de equações normais erram por uma ordem de grandeza de
+diferença entre si.** Gauss, Cholesky e Cramer resolvem o *mesmo* sistema
+`(XᵗX)β = Xᵗy`, e o quanto cada uma perde depende da fatoração.
+
+Então "não use equações normais" é um conselho incompleto. O conselho completo
+é: **elevar o número de condição ao quadrado é o erro principal, e qual
+fatoração se usa depois ainda muda o resultado por 100×.**
+
+E a metade de cima também tem leitura: o `\` do Octave fica em 1,8e-13,
+cinco ordens melhor que o `\` do Julia e o QR do R, que são 1,3e-08. Os três
+são "QR". Nenhum dos três está errado — o limite teórico do problema é
+`k·eps ≈ 1,7e-06`, e todos estão bem abaixo dele.
+
+## Uma verificação que o Julia me obrigou a escrever
+
+Para classificar as duas novas implementações, o `verifica.sh` tem dois
+conjuntos:
+
+```python
+QR_SVD  = {"python", "R", "octave", "fortran-qr", "hansl", "julia-qr"}
+NORMAIS = {"fortran-nrm", "sql", "julia-nrm"}
+```
+
+E as checagens do caso `mal` **iteram sobre esses conjuntos**. Uma
+implementação que não esteja em nenhum dos dois não é verificada ali — e a
+suíte passa verde, porque nada reclamava de um conjunto incompleto.
+
+Era exatamente o risco de acrescentar o Julia: registrá-lo no `compara.py` e
+esquecer aqui daria dois números bonitos na tabela e **zero verificação sobre
+eles**.
+
+Agora a suíte verifica a si mesma:
+
+```
+ok    as 9 implementações estão todas classificadas por família
+```
+
+E se eu tirar uma implementação de sua família, ela reprova — medido:
+
+```
+FALHA implementações sem família declarada: julia-nrm
+      -- elas NÃO seriam verificadas no caso mal
+```
+
+É a mesma falha que este portfólio registrou onze vezes com outro nome: **o
+instrumento que esconde o próprio sinal.** A diferença é que aqui ela está
+fechada por construção, e não por lembrança.
 
 ## O achado que eu não previa: o SQL erra o ajuste em 40%
 
@@ -243,7 +317,7 @@ que o projeto existe para medir.
 | **Fortran** | **os dois algoritmos**, à mão, no mesmo arquivo | ✅ feito |
 | **hansl** | econometria dirigida por comando (no lugar do Stata) | ✅ feito |
 | **SQL** | o que custa não ter escolha de algoritmo | ✅ feito |
-| **Julia** | tipos paramétricos e despacho múltiplo em código numérico | a fazer — não está no apt |
+| **Julia** | que **qual fatoração** se usa muda o erro por 100×, dentro da mesma família | ✅ feito |
 | **Scala/Spark** | o mesmo modelo distribuído | a fazer |
 | **Mojo** | a promessa de "Python com desempenho de C" | a fazer — SDK da Modular |
 | **Wolfram** | solução simbólica, e não numérica — o único que pode dar a resposta exata | a fazer — Wolfram Engine, livre para desenvolvedor |

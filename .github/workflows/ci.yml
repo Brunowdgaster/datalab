@@ -8,7 +8,7 @@ on:
 
 jobs:
   modelo:
-    name: modelo (Python, R, Octave, Fortran, hansl, SQL)
+    name: modelo (Python, R, Octave, Fortran, Julia, hansl, SQL)
     runs-on: ubuntu-latest
 
     steps:
@@ -27,6 +27,19 @@ jobs:
           gfortran -dumpversion
           gretlcli --version </dev/null | head -1
           sqlite3 --version
+
+      - name: Julia
+        # A action oficial poe o `julia` no PATH, e e por isso que o
+        # `julia/roda.sh` procura o PATH ANTES de ~/ferramentas: num runner
+        # bem configurado e o PATH que deve ganhar.
+        #
+        # A versao e "1" -- a ultima estavel da serie 1.x -- e nao um numero
+        # fixo. Fixar daria reprodutibilidade e esconderia justamente o que
+        # este projeto mede: se uma versao nova do LAPACK mudar a ordem das
+        # somas, o CI deve mostrar isso, nao congelar o passado.
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
 
       - name: a suite, em modo exigente
         # P05_EXIGE=1 transforma "pulado" em FALHA: no CI, uma implementacao
