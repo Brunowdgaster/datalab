@@ -5,7 +5,8 @@ Octave, Fortran, hansl e SQL** — sete implementações, porque o Fortran traz
 duas — sobre o mesmo conjunto de dados, comparadas com **tolerância
 justificada** em vez de `diff`.
 
-> **Status:** 7 das 10 linguagens previstas, com **11 verificações**. Python,
+> **Status:** 8 das 10 linguagens previstas, com **11 verificações** e **11
+> implementações** (algumas linguagens entram com os dois algoritmos). Python,
 > R, Octave (dialeto MATLAB), Fortran, hansl e SQL estão completos. Ver
 > [Roadmap](#roadmap).
 
@@ -119,8 +120,10 @@ coeficientes:
 | julia-qr | QR pivotada (`dgeqp3`) | 1,3e-08 |
 | R | QR (LINPACK `dqrdc2`) | 1,4e-08 |
 | fortran-qr | QR Householder, à mão | 1,4e-08 |
+| **scala-qr** | **QR Householder, à mão (JVM)** | **1,4e-08** |
 | | | |
 | fortran-nrm | equações normais + **Gauss** | 3,4e-03 |
+| **scala-nrm** | equações normais + **Gauss (JVM)** | **3,4e-03** |
 | julia-nrm | equações normais + **Cholesky** | 2,4e-02 |
 | sql | equações normais + **Cramer** | 4,0e-01 |
 
@@ -135,6 +138,44 @@ diferença entre si.** Gauss, Cholesky e Cramer resolvem o *mesmo* sistema
 Então "não use equações normais" é um conselho incompleto. O conselho completo
 é: **elevar o número de condição ao quadrado é o erro principal, e qual
 fatoração se usa depois ainda muda o resultado por 100×.**
+
+### E o Scala fechou o experimento pela outra ponta
+
+> Nota de contagem: o Scala **não acrescenta** uma linguagem nova ao
+> portfólio — ele já aparecia no `p03-otp-mesh`. O `registro.lua` do
+> `p12-toolbelt` desduplica, e foi ele que me corrigiu quando eu já havia
+> escrito "67 linguagens" no índice. Aqui o Scala entra pelo que ele
+> **mede**, não pelo que ele soma.
+
+
+
+As duas linhas em negrito são o controle que faltava. O `scala/modelo.scala`
+implementa **os mesmos dois algoritmos** que o `fortran/modelo.f90` — QR de
+Householder e equações normais com eliminação de Gauss e pivotamento parcial —
+escritos independentemente, numa linguagem diferente, rodando numa máquina
+virtual em vez de código nativo.
+
+E os números batem:
+
+| algoritmo | Fortran (nativo) | Scala (JVM) |
+|---|---|---|
+| QR Householder | 1,4e-08 | **1,4e-08** |
+| eq. normais + Gauss | 3,4e-03 | **3,4e-03** |
+
+Até a coluna de ajuste bate: 5,5e-09 nos dois, para as equações normais.
+
+Com isso a tese está demonstrada **nas duas direções**:
+
+* **mesmo algoritmo, linguagens diferentes → mesmo erro.** Fortran nativo e
+  Scala na JVM, dois autores de código distintos (eu, em dois dias
+  diferentes), e o resultado é indistinguível na precisão que importa;
+* **mesma família, fatorações diferentes → erros a 100× de distância.**
+  Gauss, Cholesky e Cramer resolvem o mesmo sistema e perdem quantidades
+  diferentes de dígitos.
+
+O que **não** explica a divergência, portanto: a linguagem, o compilador, a
+máquina virtual, o sistema de tipos. O que explica: **a sequência de operações
+aritméticas que o algoritmo escolhe.**
 
 E a metade de cima também tem leitura: o `\` do Octave fica em 1,8e-13,
 cinco ordens melhor que o `\` do Julia e o QR do R, que são 1,3e-08. Os três
@@ -268,6 +309,69 @@ E duas armadilhas concretas que apareceram:
   locale não é UTF-8. `LC_ALL=C.UTF-8` mantém o ponto decimal e cala o aviso;
   `LC_ALL=C` não.
 
+## Por que o Scala não usa Spark
+
+O plano original dizia **"Scala/Spark"**. O `scala/modelo.scala` não tem
+dependência nenhuma — o cabeçalho é só `//> using scala 3`, e a QR de
+Householder está escrita à mão, em 40 linhas.
+
+Spark resolveria isto com `LinearRegression` do MLlib, em três. E seria
+**desonesto como medida**, por três motivos:
+
+* **o algoritmo ficaria escondido.** O MLlib escolhe entre L-BFGS e as
+  equações normais via Breeze/netlib dependendo de parâmetros e do número de
+  colunas. A linha da tabela diria "Spark" sem dizer qual — e o algoritmo é
+  justamente a variável que este projeto mede;
+
+* **o conjunto tem 12 linhas.** Spark distribuiria 12 linhas por um executor,
+  com serialização de milissegundos para uma conta de microssegundos. O número
+  mediria a JVM subindo;
+
+* **o MLlib regulariza** por padrão em algumas configurações (`regParam`), e um
+  β diferente por regularização não é erro numérico — é outro modelo. A tabela
+  reportaria como divergência algo que é uma escolha estatística.
+
+Spark tem lugar neste portfólio onde ele faz sentido: volume e distribuição.
+Aqui ele daria um número bonito sobre nada.
+
+### E o que Scala tornou curto não foi a álgebra
+
+Foi a **composição**. `zip`, `map` e `foldLeft` deixam o resíduo e as somas de
+quadrados legíveis sem um índice solto:
+
+```scala
+val ajustado = x.map(linha => linha.zip(beta).map(_ * _).sum)
+val residuo  = y.zip(ajustado).map((a, b) => a - b)
+```
+
+O custo está na outra ponta, e é o assunto da seção
+[O que cada linguagem torna curto](#o-que-cada-linguagem-torna-curto): o Julia
+resolve o mesmo problema com `X \ y` — **um caractere** — porque o operador
+despacha para LAPACK. O Scala escolheu não ter isso, e pagou 40 linhas.
+
+### Uma suspeita que eu tive e que a medição descartou
+
+A primeira saída do Scala foi `b0=0.88071428571428000`, com três zeros no fim,
+contra `b0=0.8807142857142839` do Julia. Suspeitei do `%.17g` do Java — que o
+meu próprio comentário no arquivo avisa ser capaz de medir a formatação em vez
+da aritmética.
+
+Então medi, em vez de supor. Os três caminhos de formatação do Java, sobre o
+**mesmo** double:
+
+```
+%.17g      -> 0.88071428571428390     volta exato? true
+toString   -> 0.8807142857142839      volta exato? true
+BigDecimal -> 0.88071428571428390     volta exato? true
+```
+
+O `%.17g` arredonda corretamente e **volta ao bit exato**. Os zeros não eram
+formatação: o valor que o Scala calcula **é** outro `double`, a ~4e-15
+relativo do de Julia — Householder à mão contra QR pivotada do LAPACK.
+
+É o resultado que o projeto espera, e está escrito aqui porque a suspeita era
+razoável e descartá-la exigiu evidência, não confiança.
+
 ## Rodando
 
 ```bash
@@ -318,7 +422,7 @@ que o projeto existe para medir.
 | **hansl** | econometria dirigida por comando (no lugar do Stata) | ✅ feito |
 | **SQL** | o que custa não ter escolha de algoritmo | ✅ feito |
 | **Julia** | que **qual fatoração** se usa muda o erro por 100×, dentro da mesma família | ✅ feito |
-| **Scala/Spark** | o mesmo modelo distribuído | a fazer |
+| **Scala** | álgebra linear **sem biblioteca**, e por que Spark seria desonesto aqui | ✅ feito |
 | **Mojo** | a promessa de "Python com desempenho de C" | a fazer — SDK da Modular |
 | **Wolfram** | solução simbólica, e não numérica — o único que pode dar a resposta exata | a fazer — Wolfram Engine, livre para desenvolvedor |
 | **SAS** | o dialeto de `PROC` que ainda roda a indústria farmacêutica e bancária | a fazer — SAS OnDemand, nuvem com cadastro gratuito |

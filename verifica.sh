@@ -155,8 +155,9 @@ else
 import json
 import sys
 
-QR_SVD = {"python", "R", "octave", "fortran-qr", "hansl", "julia-qr"}
-NORMAIS = {"fortran-nrm", "sql", "julia-nrm"}
+QR_SVD = {"python", "R", "octave", "fortran-qr", "hansl", "julia-qr",
+          "scala-qr"}
+NORMAIS = {"fortran-nrm", "sql", "julia-nrm", "scala-nrm"}
 
 TOL_BEM = 1e-10
 TOL_MAL_QR = 1e-6

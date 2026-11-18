@@ -8,7 +8,7 @@ on:
 
 jobs:
   modelo:
-    name: modelo (Python, R, Octave, Fortran, Julia, hansl, SQL)
+    name: modelo (Python, R, Octave, Fortran, Julia, Scala, hansl, SQL)
     runs-on: ubuntu-latest
 
     steps:
@@ -40,6 +40,22 @@ jobs:
         uses: julia-actions/setup-julia@v2
         with:
           version: '1'
+
+      - name: scala-cli
+        # O binario nativo direto do release, e NAO a action `scala/setup-scala`
+        # -- ela instala sbt e um JDK que nao sao usados aqui, e o
+        # `modelo.scala` nao tem dependencia nenhuma (so `//> using scala 3`).
+        #
+        # A versao vem da tag `latest` resolvida na hora, pelo mesmo motivo do
+        # Julia: fixar esconderia uma mudanca de comportamento do compilador,
+        # que e justamente o que este projeto deveria ver.
+        run: |
+          ver=$(curl -fsSL https://api.github.com/repos/VirtusLab/scala-cli/releases/latest                 | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')
+          echo "scala-cli $ver"
+          curl -fsSL "https://github.com/VirtusLab/scala-cli/releases/download/$ver/scala-cli-x86_64-pc-linux.gz"             -o /tmp/scala-cli.gz
+          gunzip -f /tmp/scala-cli.gz
+          sudo install -m 755 /tmp/scala-cli /usr/local/bin/scala-cli
+          scala-cli version
 
       - name: a suite, em modo exigente
         # P05_EXIGE=1 transforma "pulado" em FALHA: no CI, uma implementacao
