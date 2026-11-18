@@ -8,7 +8,7 @@ on:
 
 jobs:
   modelo:
-    name: modelo (Python, R, Octave, Fortran, Julia, Scala, hansl, SQL)
+    name: modelo (Python, R, Octave, Fortran, Julia, Scala, Mojo, hansl, SQL)
     runs-on: ubuntu-latest
 
     steps:
@@ -49,13 +49,61 @@ jobs:
         # A versao vem da tag `latest` resolvida na hora, pelo mesmo motivo do
         # Julia: fixar esconderia uma mudanca de comportamento do compilador,
         # que e justamente o que este projeto deveria ver.
+        #
+        # O ATALHO `/releases/latest/download/`, e por que NAO a API.
+        #
+        # A primeira versao deste passo resolvia a versao pela API:
+        #
+        #     ver=$(curl -fsSL .../releases/latest | python3 -c '... ["tag_name"]')
+        #
+        # e o CI falhou com `json.decoder.JSONDecodeError: Expecting value:
+        # line 1 column 1 (char 0)` -- um erro que fala de JSON e nao menciona
+        # a causa.
+        #
+        # A causa: api.github.com limita chamadas NAO autenticadas a 60/hora
+        # POR IP, e os runners compartilham IP. A chamada foi recusada, o
+        # `curl -f` saiu com erro, e o `python3` recebeu stdin vazio.
+        #
+        # `/releases/latest/download/<ativo>` redireciona direto para o ativo
+        # da versao mais nova, SEM passar pela API -- medido: HTTP 206 no
+        # pedido de faixa, servido por release-assets.githubusercontent.com.
+        #
+        # Isso mantem a decisao de nao fixar versao (uma mudanca do compilador
+        # deve aparecer aqui, nao ser congelada) sem depender de uma cota.
         run: |
-          ver=$(curl -fsSL https://api.github.com/repos/VirtusLab/scala-cli/releases/latest                 | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')
-          echo "scala-cli $ver"
-          curl -fsSL "https://github.com/VirtusLab/scala-cli/releases/download/$ver/scala-cli-x86_64-pc-linux.gz"             -o /tmp/scala-cli.gz
+          curl -fsSL             https://github.com/VirtusLab/scala-cli/releases/latest/download/scala-cli-x86_64-pc-linux.gz             -o /tmp/scala-cli.gz
           gunzip -f /tmp/scala-cli.gz
           sudo install -m 755 /tmp/scala-cli /usr/local/bin/scala-cli
           scala-cli version
+
+      - name: Mojo, pelo canal publico da Modular
+        # SEM conta: houve epoca em que a Modular exigia `modular auth` com um
+        # token do site. Hoje o canal conda e publico, e isso foi MEDIDO antes
+        # de instalar:
+        #
+        #     https://conda.modular.com/max/linux-64/repodata.json -> HTTP 200
+        #     pacotes: ['max', 'mojo', 'mojo-compiler']
+        #
+        # O `pixi` instala o ambiente; o `mojo/roda.sh` acha o binario e
+        # define MODULAR_HOME derivado DO PROPRIO BINARIO -- sem isso o
+        # compilador nao acha a stdlib e reporta `len` como simbolo
+        # desconhecido, que e um erro que nao menciona a causa.
+        run: |
+          curl -fsSL https://pixi.sh/install.sh | bash
+          export PATH="$HOME/.pixi/bin:$PATH"
+          mkdir -p "$HOME/ferramentas/mojo"
+          cat > "$HOME/ferramentas/mojo/pixi.toml" <<'TOML'
+          [workspace]
+          name = "mojo-p05"
+          channels = ["https://conda.modular.com/max", "conda-forge"]
+          platforms = ["linux-64"]
+
+          [dependencies]
+          mojo = "*"
+          TOML
+          sed -i 's/^          //' "$HOME/ferramentas/mojo/pixi.toml"
+          (cd "$HOME/ferramentas/mojo" && pixi install)
+          "$HOME/ferramentas/mojo/.pixi/envs/default/bin/mojo" --version
 
       - name: a suite, em modo exigente
         # P05_EXIGE=1 transforma "pulado" em FALHA: no CI, uma implementacao

@@ -5,7 +5,7 @@ Octave, Fortran, hansl e SQL** — sete implementações, porque o Fortran traz
 duas — sobre o mesmo conjunto de dados, comparadas com **tolerância
 justificada** em vez de `diff`.
 
-> **Status:** 8 das 10 linguagens previstas, com **11 verificações** e **11
+> **Status:** 9 das 10 linguagens previstas, com **11 verificações** e **13
 > implementações** (algumas linguagens entram com os dois algoritmos). Python,
 > R, Octave (dialeto MATLAB), Fortran, hansl e SQL estão completos. Ver
 > [Roadmap](#roadmap).
@@ -121,9 +121,11 @@ coeficientes:
 | R | QR (LINPACK `dqrdc2`) | 1,4e-08 |
 | fortran-qr | QR Householder, à mão | 1,4e-08 |
 | **scala-qr** | **QR Householder, à mão (JVM)** | **1,4e-08** |
+| **mojo-qr** | **QR Householder, à mão (Mojo)** | **1,0e-08** |
 | | | |
 | fortran-nrm | equações normais + **Gauss** | 3,4e-03 |
 | **scala-nrm** | equações normais + **Gauss (JVM)** | **3,4e-03** |
+| **mojo-nrm** | equações normais + **Gauss (Mojo)** | **1,2e-02** |
 | julia-nrm | equações normais + **Cholesky** | 2,4e-02 |
 | sql | equações normais + **Cramer** | 4,0e-01 |
 
@@ -176,6 +178,65 @@ Com isso a tese está demonstrada **nas duas direções**:
 O que **não** explica a divergência, portanto: a linguagem, o compilador, a
 máquina virtual, o sistema de tipos. O que explica: **a sequência de operações
 aritméticas que o algoritmo escolhe.**
+
+### E o Mojo mostrou onde esse raciocínio PARA de valer
+
+O `mojo/modelo.mojo` implementa os mesmos dois algoritmos que o Fortran e o
+Scala. Pela regra acima, os três deveriam dar o mesmo número. Dão — **num dos
+dois casos**:
+
+| equações normais + Gauss | caso `bem` (κ = 22) | caso `mal` (κ = 7,4e+09) |
+|---|---|---|
+| Fortran | 1,5e-14 | 3,4e-03 |
+| Scala | 1,5e-14 | 3,4e-03 |
+| **Mojo** | **1,4e-14** | **1,2e-02** |
+
+No caso bem-condicionado, os três concordam. No mal-condicionado, o Mojo erra
+**3,5× mais** que os outros dois — com o mesmo algoritmo.
+
+Isso não refuta a tese; **delimita** onde ela vale. A suíte já media a razão,
+numa verificação que existe desde antes do Mojo:
+
+```
+ok    o caso mal é severo: XᵗX é numericamente singular
+      k(XtX)=5.53e+19 > 1/eps=4.50e+15
+```
+
+Montar `XᵗX` eleva o número de condição ao quadrado, e `5,5e+19` passa de
+`1/eps`. **A matriz é numericamente singular**: não restou dígito
+significativo para o resultado se apoiar. O que cada implementação devolve ali
+é ruído amplificado, e o *tamanho* desse ruído não é uma quantidade
+reprodutível — muda com qualquer alteração na ordem das operações, por menor
+que seja.
+
+A formulação precisa da tese, então:
+
+> Mesmo algoritmo em linguagens diferentes dá o mesmo erro **enquanto o
+> problema tiver dígitos a perder.** Depois que a matriz fica numericamente
+> singular, nem o erro é reprodutível — e é por isso que a suíte verifica que
+> as equações normais **divergem acima de 1e-4**, em vez de conferir um valor.
+
+Essa escolha de verificação foi feita antes de o Mojo entrar no projeto, por
+cautela. O Mojo mostrou que ela era necessária: uma suíte que exigisse
+`3,4e-03` teria reprovado uma implementação correta.
+
+### Uma hipótese que eu tive, e medi antes de escrever
+
+A primeira suspeita foi **contração em FMA** — o compilador fundindo
+`s += a * b` numa única instrução, que arredonda uma vez em vez de duas e
+mudaria o resultado.
+
+Testei contra a versão que força o arredondamento intermediário:
+
+```
+s += v*w        = 2.879059604862243
+t = v*w; s += t = 2.879059604862243
+iguais?         = True
+```
+
+**Sem contração.** A hipótese estava errada, e a explicação verdadeira é a
+singularidade numérica acima — que é melhor, porque vale para qualquer
+implementação e não para uma escolha do compilador do Mojo.
 
 E a metade de cima também tem leitura: o `\` do Octave fica em 1,8e-13,
 cinco ordens melhor que o `\` do Julia e o QR do R, que são 1,3e-08. Os três
@@ -423,7 +484,7 @@ que o projeto existe para medir.
 | **SQL** | o que custa não ter escolha de algoritmo | ✅ feito |
 | **Julia** | que **qual fatoração** se usa muda o erro por 100×, dentro da mesma família | ✅ feito |
 | **Scala** | álgebra linear **sem biblioteca**, e por que Spark seria desonesto aqui | ✅ feito |
-| **Mojo** | a promessa de "Python com desempenho de C" | a fazer — SDK da Modular |
+| **Mojo** | onde o raciocínio "mesmo algoritmo, mesmo erro" **para de valer** | ✅ feito |
 | **Wolfram** | solução simbólica, e não numérica — o único que pode dar a resposta exata | a fazer — Wolfram Engine, livre para desenvolvedor |
 | **SAS** | o dialeto de `PROC` que ainda roda a indústria farmacêutica e bancária | a fazer — SAS OnDemand, nuvem com cadastro gratuito |
 | ~~Stata~~ | — | **substituído por hansl**, ver acima |
